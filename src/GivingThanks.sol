@@ -28,10 +28,12 @@ contract GivingThanks is ERC721URIStorage {
     function donate(address charity) public payable {
         console2.log(registry.isVerified(charity));
         require(registry.isVerified(charity), "Charity not verified");
-        (bool sent,) = charity.call{value: msg.value}("");
+        // @audit-medium - The donor can donate 0 ether to the charity, and receive an NFT. Not good for the charity.
+        (bool sent,) = charity.call{value: msg.value}(""); // good for gas optimization
         require(sent, "Failed to send Ether");
 
-        // @audit-medium - This should be a safe mint
+        // @audit-high - reentrancy, the donor can mint unlimited NFTs by reentering the call
+        // @audit-medium - This should be a safe mint to make sure contract can deal with ERC721
         _mint(msg.sender, tokenCounter);
         // @audit-low - should emit an event for the minting of the token
 
@@ -65,6 +67,7 @@ contract GivingThanks is ERC721URIStorage {
 
     // q what actually haappens here? Can anyone change the registry? to there own address?
     // Anyone can change the registry address to their own address 
+    // @audit-medium - This should only be callable by the owner of the contract, Otherwise a malicious contract can be created to bypass charity verification checks
     function updateRegistry(address _registry) public {
         registry = CharityRegistry(_registry);
     }

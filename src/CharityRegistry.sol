@@ -23,7 +23,7 @@ contract CharityRegistry {
     }
 
     function isVerified(address charity) public view returns (bool) {
-        // @audit-medium  - This should return the verified status of the charity
+        // @audit-medium  - This should return the verified status of the charity, 
         // console2.log("isVerified: ", verifiedCharities[charity]);
         // console2.log("registeredCharities: ", registeredCharities[charity]);
         // console2.log("verifiedCharities: ", verifiedCharities[charity]);

