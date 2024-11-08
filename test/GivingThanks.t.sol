@@ -131,9 +131,6 @@ contract GivingThanksTest is Test {
 
         // Check that the charity is verified
         bool isVerified = registryContract.isVerified(unverifiedCharity);
-        console2.log("isVerified: ", registryContract.isVerified(unverifiedCharity));
-        console2.log("registeredCharities: ", registryContract.registeredCharities(unverifiedCharity));
-        console2.log("verifiedCharities: ", registryContract.verifiedCharities(unverifiedCharity));
         assertTrue(isVerified);
     }
     function testIsVerifiedWithRealCharity() public {

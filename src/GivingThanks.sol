@@ -35,7 +35,7 @@ contract GivingThanks is ERC721URIStorage {
         // @audit-high - reentrancy, the donor can mint unlimited NFTs by reentering the call
         // @audit-medium - This should be a safe mint to make sure contract can deal with ERC721
         _mint(msg.sender, tokenCounter);
-        // @audit-low - should emit an event for the minting of the token
+        // @audit-info - should emit an event for the minting of the token
 
         // Create metadata for the tokenURI
         string memory uri = _createTokenURI(msg.sender, block.timestamp, msg.value);
