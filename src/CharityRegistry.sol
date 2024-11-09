@@ -5,8 +5,9 @@ import { console2 } from "forge-std/Test.sol";
 
 contract CharityRegistry {
     address public admin;
-    mapping(address => bool) public verifiedCharities;
-    mapping(address => bool) public registeredCharities;
+    // @audit-info - need to emit events when changing these.
+    mapping(address => bool) public verifiedCharities; // storage vars?
+    mapping(address => bool) public registeredCharities; // storage vars? should emit event with updates
 
     constructor() {
         admin = msg.sender;

